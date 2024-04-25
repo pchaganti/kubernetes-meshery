@@ -26,8 +26,10 @@ import (
 	"github.com/layer5io/meshery/server/models/environments"
 	"github.com/layer5io/meshkit/database"
 	"github.com/layer5io/meshkit/logger"
+	"github.com/layer5io/meshkit/models/events"
 	mesherykube "github.com/layer5io/meshkit/utils/kubernetes"
 	SMP "github.com/layer5io/service-mesh-performance/spec"
+	_errors "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"k8s.io/client-go/util/homedir"
@@ -1225,10 +1227,40 @@ func (l *RemoteProvider) PublishSmiResults(result *SmiResult) (string, error) {
 	return "", ErrPost(err, fmt.Sprint(bdr), resp.StatusCode)
 }
 
+func (l *RemoteProvider) PublishEventToProvider(tokenString string, event events.Event) error {
+	if !l.Capabilities.IsSupported(PersistMesheryPatternResources) {
+		l.Log.Error(ErrInvalidCapability("PersistEvents", l.ProviderName))
+		return ErrInvalidCapability("PersistEvents", l.ProviderName)
+	}
+	ep, _ := l.Capabilities.GetEndpointForFeature(PersistEvents)
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		return ErrMarshal(err, "meshery event")
+	}
+
+	l.Log.Info("attempting to publish event to remote provider, size: %d", len(data))
+	bf := bytes.NewBuffer(data)
+	remoteProviderURL, _ := url.Parse(l.RemoteProviderURL + ep)
+
+	cReq, _ := http.NewRequest(http.MethodPost, remoteProviderURL.String(), bf)
+
+	resp, err := l.DoRequest(cReq, tokenString)
+	if err != nil {
+		return ErrUnreachableRemoteProvider(err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		l.Log.Error(ErrPost(err, "event", resp.StatusCode))
+		return ErrPost(err, "event", resp.StatusCode)
+	}
+	return nil
+}
+
 // PublishMetrics - publishes metrics to the provider backend asyncronously
 func (l *RemoteProvider) PublishMetrics(tokenString string, result *MesheryResult) error {
 	if !l.Capabilities.IsSupported(PersistMetrics) {
-		logrus.Error("operation not available")
+		l.Log.Error(ErrInvalidCapability("PersistMetrics", l.ProviderName))
 		return ErrInvalidCapability("PersistMetrics", l.ProviderName)
 	}
 
@@ -1239,8 +1271,8 @@ func (l *RemoteProvider) PublishMetrics(tokenString string, result *MesheryResul
 		return ErrMarshal(err, "meshery metrics for shipping")
 	}
 
-	logrus.Debugf("Result: %s, size: %d", data, len(data))
-	logrus.Infof("attempting to publish metrics to remote provider")
+	l.Log.Debug("Result: %s, size: %d", data, len(data))
+	l.Log.Info("attempting to publish metrics to remote provider")
 	bf := bytes.NewBuffer(data)
 
 	remoteProviderURL, _ := url.Parse(l.RemoteProviderURL + ep)
@@ -1251,11 +1283,11 @@ func (l *RemoteProvider) PublishMetrics(tokenString string, result *MesheryResul
 		if resp == nil {
 			return ErrUnreachableRemoteProvider(err)
 		}
-		logrus.Errorf("unable to send metrics: %v", err)
+		l.Log.Error(ErrPost(err, "metrics", resp.StatusCode))
 		return ErrPost(err, "metrics", resp.StatusCode)
 	}
 	if resp.StatusCode == http.StatusOK {
-		logrus.Infof("metrics successfully published to remote provider")
+		l.Log.Info("metrics successfully published to remote provider")
 		return nil
 	}
 	defer func() {
@@ -1265,7 +1297,7 @@ func (l *RemoteProvider) PublishMetrics(tokenString string, result *MesheryResul
 	if err != nil {
 		return ErrDataRead(err, "metrics Data")
 	}
-	logrus.Errorf("error while sending metrics: %s", bdr)
+	l.Log.Error(ErrPost(err, fmt.Sprint(bdr), resp.StatusCode))
 	return ErrPost(err, fmt.Sprint(bdr), resp.StatusCode)
 }
 
