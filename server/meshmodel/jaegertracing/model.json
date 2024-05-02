@@ -1,18 +1,18 @@
 {
   "id": "00000000-0000-0000-0000-000000000000",
-  "name": "galoy",
-  "version": "0.33.93",
-  "displayName": "Galoy",
+  "name": "jaegertracing",
+  "version": "jaeger-3.0.4",
+  "displayName": "JaegerTracing",
   "status": "",
   "hostID": "00000000-0000-0000-0000-000000000000",
   "category": {
-   "name": "Uncategorized",
+   "name": "Observability and Analysis",
    "metadata": null
   },
   "metadata": {
    "isAnnotation": false,
-   "published": false,
-   "subCategory": "Uncategorized",
+   "published": true,
+   "subCategory": "Tracing",
    "svgColor": "",
    "svgComplete": "",
    "svgWhite": ""
